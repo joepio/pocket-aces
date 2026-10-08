@@ -4,8 +4,10 @@
 <header><span class="brand">POCKET ACES <small>THE ROOFTOP CLUB</small></span><span id="connection" role="status">Connecting</span></header>
 <section class="identity"><h1 id="name">Your seat</h1><span id="chips">Waiting for the table</span></section>
 <div id="notice" role="status" aria-live="polite"></div>
-<section id="hand" aria-label="Your private hand"><div class="card back">◆</div><div class="card back">◆</div></section>
-<p class="private">Just between you and the table.</p>
+<button id="hand-toggle" type="button" aria-label="Show cards" aria-expanded="false" aria-controls="hand" disabled>
+<span id="hand" aria-hidden="true"><span class="card back">◆</span><span class="card back">◆</span></span>
+<span id="hand-hint" class="private">Tap to show cards</span>
+</button>
 <section class="table-info"><span id="street">Take a seat in GameNight</span><strong id="pot">POT 0</strong></section>
 <div id="board" aria-label="Community cards"></div>
 <h2 id="turn">Waiting for your hand…</h2><p id="result"></p>

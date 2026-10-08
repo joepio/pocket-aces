@@ -11,6 +11,9 @@ Game tab on your phone. The host opens the bundled companion page for your
 linked profile. You don't enter a player number or open a separate game server.
 
 - Each hand starts with two private cards and small/big blinds of 10/20.
+- Your phone keeps those cards face down. Tap the cards to look, then tap again
+  to hide them. A new hand, refresh, reconnect, pause or leaving the page hides
+  them automatically. Hiding still works while a betting action is pending.
 - Fold, check, call or raise using your phone. **Raise to** means your total
   contribution on this betting street, not the extra chips you add.
 - The flop, turn and river appear on the table. Best five-card hand wins.

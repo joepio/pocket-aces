@@ -20,11 +20,28 @@ const assert = require('node:assert/strict');
       page.on('pageerror',e=>errors.push(e.message));
       await page.goto(url);
       await page.waitForFunction(()=>document.querySelector('#connection').textContent==='Private hand');
-      await page.waitForFunction(()=>document.querySelector('#hand').textContent!=='◆◆');
+      await page.waitForFunction(()=>!document.querySelector('#hand-toggle').disabled);
+      assert.equal(await page.locator('#hand').textContent(),'◆◆','private cards start hidden');
+      assert.equal(await page.locator('#hand-toggle').getAttribute('aria-label'),'Show cards');
       assert.equal(await page.locator('#name').textContent(), ['Clover','Peaches'][i]);
       assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
     }
-    assert.notEqual(await pages[0].locator('#hand').textContent(),await pages[1].locator('#hand').textContent());
+    await pages[0].screenshot({path:output+'/phone-hidden.png',fullPage:true});
+    const revealedHands=[];
+    for (const [i,page] of pages.entries()) {
+      await page.locator('#hand-toggle').tap();
+      revealedHands.push(await page.locator('#hand').textContent());
+      assert.notEqual(revealedHands[i],'◆◆','tap reveals the hand');
+      if(i===0) await page.screenshot({path:output+'/phone-revealed.png',fullPage:true});
+      await page.locator('#hand-toggle').tap();
+      assert.equal(await page.locator('#hand').textContent(),'◆◆','second tap hides the hand');
+    }
+    assert.notEqual(...revealedHands);
+    await pages[0].waitForTimeout(1200);
+    assert.equal(await pages[0].locator('#hand').textContent(),'◆◆','state updates do not reveal cards');
+    await pages[0].locator('#hand-toggle').tap();
+    await pages[0].evaluate(()=>window.dispatchEvent(new Event('blur')));
+    assert.equal(await pages[0].locator('#hand').textContent(),'◆◆','leaving the page conceals the hand');
     let turn = -1;
     for (let attempt=0;attempt<120 && turn<0;attempt++) {
       for(let i=0;i<2;i++) if(await pages[i].locator('#actions').isVisible()) turn=i;
@@ -41,13 +58,22 @@ const assert = require('node:assert/strict');
     await other.locator('#fold').click();
     await other.waitForFunction(()=>document.querySelector('#turn').textContent==='Hand complete');
     await actor.screenshot({path:output+'/phone-result.png',fullPage:true});
+    // Showing a finished hand must not expose the next hand when it is dealt.
+    if (await actor.locator('#hand-toggle').getAttribute('aria-expanded')==='false') await actor.locator('#hand-toggle').tap();
+    const previousHand=await actor.locator('#street').textContent();
+    await actor.waitForFunction(previous=>document.querySelector('#street').textContent!==previous && document.querySelector('#street').textContent.includes('Pre-flop'),previousHand);
+    assert.equal(await actor.locator('#hand').textContent(),'◆◆','new hand is hidden');
+    await actor.locator('#hand-toggle').tap();
     await actor.reload();
     await actor.waitForFunction(()=>document.querySelector('#connection').textContent==='Private hand');
     assert.equal(await actor.locator('#name').textContent(),['Clover','Peaches'][turn]);
+    assert.equal(await actor.locator('#hand').textContent(),'◆◆','refresh defaults to hidden');
+    await actor.locator('#hand-toggle').tap();
     await actor.evaluate(()=>window.testSocket.close());
     await actor.waitForFunction(()=>document.querySelector('#connection').textContent.includes('Reconnecting'));
     await actor.waitForFunction(()=>document.querySelector('#connection').textContent==='Private hand');
+    assert.equal(await actor.locator('#hand').textContent(),'◆◆','reconnect defaults to hidden');
     assert.deepEqual(errors,[]);
-    console.log('POCKET_ACES_PHONE_PASS: two private touch views, raise/fold, result, refresh, socket reconnect, no horizontal overflow or JavaScript errors');
+    console.log('POCKET_ACES_PHONE_PASS: hidden by default, tap reveal/hide, state updates, blur, new hand, refresh/reconnect, two private touch views, raise/fold, no overflow or JavaScript errors');
   } finally {await browser.close();}
 })().catch(e=>{console.error(e);process.exitCode=1;});

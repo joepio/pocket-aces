@@ -2,18 +2,29 @@
 (() => {
   const $ = id => document.getElementById(id);
   let state = null, pending = false, online = false, previousRevision = -1;
+  let revealed = false;
   const faces = ['2','3','4','5','6','7','8','9','10','J','Q','K','A'];
   const suits = ['♣','♦','♥','♠'];
   function cards(target, values, backs = 0) {
     target.replaceChildren();
     for (let i = 0; i < Math.max(values.length, backs); i++) {
-      const c = values[i], el = document.createElement('div');
+      const c = values[i], el = document.createElement('span');
       const suit = Number.isInteger(c) ? Math.floor(c / 13) : -1;
       el.className = `card ${suit < 0 ? 'back' : [1,2].includes(suit) ? 'red' : ''}`;
       el.textContent = suit < 0 ? '◆' : faces[c % 13] + suits[suit];
       target.append(el);
     }
   }
+  function renderHand() {
+    const values = revealed ? state?.you?.cards || [] : [];
+    cards($('hand'), values, 2);
+    $('hand-hint').textContent = revealed ? 'Tap to hide cards' : 'Tap to show cards';
+    $('hand-toggle').setAttribute('aria-expanded', String(revealed));
+    $('hand-toggle').setAttribute('aria-label', revealed
+      ? `Hide cards: ${values.map(c => faces[c % 13] + suits[Math.floor(c / 13)]).join(', ')}`
+      : 'Show cards');
+  }
+  function hideHand() { revealed = false; renderHand(); }
   function amount(value) {
     if (!state?.actions?.raise) return;
     $('amount').value = Math.max(state.actions.min, Math.min(state.actions.max, Math.round(value)));
@@ -21,18 +32,21 @@
     $('raise').textContent = `Raise to ${$('amount').value}`;
   }
   function availability() {
-    for (const b of document.querySelectorAll('button')) b.disabled = pending || !online;
+    for (const b of document.querySelectorAll('#actions button')) b.disabled = pending || !online;
+    // Hiding is local and must remain possible while a bet is in flight.
+    $('hand-toggle').disabled = !state?.you?.cards?.length;
   }
   function receive(data) {
     if (data.type === 'error') { $('notice').textContent = data.text; pending = false; availability(); return; }
     if (data.type !== 'state' || !data.you) return;
     const changed = data.revision !== previousRevision;
+    if (data.hand !== state?.hand || JSON.stringify(data.you.cards) !== JSON.stringify(state?.you?.cards) || data.paused) revealed = false;
     state = data;
     if (changed) { pending = false; $('notice').textContent = ''; }
     previousRevision = data.revision;
     $('name').textContent = data.you.name;
     $('chips').textContent = `${data.you.chips.toLocaleString()} chips`;
-    cards($('hand'), data.you.cards);
+    renderHand();
     cards($('board'), data.board, 5);
     $('street').textContent = `Hand ${data.hand} · ${data.street}`;
     $('pot').textContent = `POT ${data.pot.toLocaleString()}`;
@@ -52,10 +66,15 @@
   const game = GameNight.connect(receive, status => {
     online = status === 'connected';
     pending = false;
+    hideHand();
     $('connection').textContent = online ? 'Private hand' : 'Reconnecting…';
     availability();
     if (online) game.send({action:'sync'});
   });
+  $('hand-toggle').onclick = () => { revealed = !revealed; renderHand(); };
+  document.addEventListener('visibilitychange', () => { if (document.hidden) hideHand(); });
+  window.addEventListener('blur', hideHand);
+  window.addEventListener('pagehide', hideHand);
   function act(action, amountValue) {
     if (!online || pending || !state) return;
     pending = true;
