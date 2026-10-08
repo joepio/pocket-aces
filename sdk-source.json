@@ -1,0 +1,5 @@
+{
+  "repository": "https://github.com/ontola/gamenight",
+  "revision": "f89f7142b7ef9a14d0db271ed42309ccc317486c",
+  "files": ["sdk/godot/addons/gamenight/gamenight.gd", "sdk/godot/addons/gamenight/screen.gd"]
+}

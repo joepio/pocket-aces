@@ -1,0 +1,12 @@
+{
+  "id": "pocket-aces",
+  "title": "Pocket Aces",
+  "tagline": "A rooftop poker table. Your phone holds the cards.",
+  "developer": "GameNight",
+  "players": {"min": 2, "max": 6, "best": 4},
+  "match_minutes": 3,
+  "price": "free",
+  "tags": ["poker", "cards", "phone screen", "godot"],
+  "integration": {"level": "integrated", "protocol": 1},
+  "links": {"source": "https://github.com/ontola/gamenight-games/tree/main/pocket-aces"}
+}
