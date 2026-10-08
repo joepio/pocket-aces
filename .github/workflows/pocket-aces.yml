@@ -1,0 +1,57 @@
+name: Pocket Aces
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  rules-and-companion:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: game
+      - uses: actions/checkout@v4
+        with:
+          repository: ontola/gamenight
+          ref: f89f7142b7ef9a14d0db271ed42309ccc317486c
+          path: host
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: host
+      - name: Install test tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libudev-dev libasound2-dev
+          curl --fail --location https://github.com/godotengine/godot-builds/releases/download/4.6.2-stable/Godot_v4.6.2-stable_linux.x86_64.zip -o "$RUNNER_TEMP/godot.zip"
+          unzip -q "$RUNNER_TEMP/godot.zip" -d "$RUNNER_TEMP/godot"
+          echo "$RUNNER_TEMP/godot" >> "$GITHUB_PATH"
+          pip install websockets==15.0.1
+          npm install --prefix "$RUNNER_TEMP/browser" playwright@1.62.1
+          "$RUNNER_TEMP/browser/node_modules/.bin/playwright" install --with-deps chromium
+          echo "NODE_PATH=$RUNNER_TEMP/browser/node_modules" >> "$GITHUB_ENV"
+      - name: Build real host
+        working-directory: host
+        run: cargo build --locked -p gamenight-daemon -p gamenight-local-web
+      - name: Rule tests
+        run: Godot_v4.6.2-stable_linux.x86_64 --headless --path game --script res://tests/rules.gd
+      - name: Two-phone integration and browser tests
+        run: |
+          python game/tests/integration.py \
+            --daemon "$PWD/host/target/debug/gamenight-daemon" \
+            --web "$PWD/host/target/debug/gamenight-local-web" \
+            --godot "$RUNNER_TEMP/godot/Godot_v4.6.2-stable_linux.x86_64" \
+            --phone-test --screenshots "$RUNNER_TEMP/poker-screenshots"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: pocket-aces-phone-screenshots
+          path: ${{ runner.temp }}/poker-screenshots

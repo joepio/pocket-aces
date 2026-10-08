@@ -8,5 +8,5 @@
   "price": "free",
   "tags": ["poker", "cards", "phone screen", "godot"],
   "integration": {"level": "integrated", "protocol": 1},
-  "links": {"source": "https://github.com/ontola/gamenight-games/tree/main/pocket-aces"}
+  "links": {"source": "https://github.com/joepio/pocket-aces"}
 }

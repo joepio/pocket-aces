@@ -52,8 +52,8 @@ the native protocol library format, separate from `gamenight.json` store metadat
     "max_players": 6,
     "launch": {
       "command": "/absolute/path/to/godot",
-      "args": ["--path", "/absolute/path/to/gamenight-games/pocket-aces"],
-      "cwd": "/absolute/path/to/gamenight-games/pocket-aces"
+      "args": ["--path", "/absolute/path/to/pocket-aces"],
+      "cwd": "/absolute/path/to/pocket-aces"
     }
   }
 ]
@@ -128,7 +128,8 @@ short/cumulative raises, side pots, odd chips and 400 seeded complete hands.
 
 ## Publishing status
 
-Playable local source, not a published store release or certified game.
+Public source repository: [joepio/pocket-aces](https://github.com/joepio/pocket-aces).
+Not yet a published GameNight store release or certified game.
 `gamenight.json` is candidate metadata. Publishing still needs native export
 packages, a real gameplay montage and platform/controller acceptance. Keep the
 `phone/*.html`, `phone/*.css` and `phone/*.js` resources in exported packages
