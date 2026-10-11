@@ -9,8 +9,9 @@ permissions:
 jobs:
   upload:
     if: vars.GAMENIGHT_PUBLISH_ENABLED == 'true'
-    uses: ontola/gamenight/.github/workflows/publish-game.yml@488258365a7fe55df3fd7677ca85b513980db492
-    secrets: inherit
+    uses: ontola/gamenight/.github/workflows/publish-game.yml@ac5e9b65272ac18cc74aee9f5694c6960c1c0a90
+    secrets:
+      GAMENIGHT_API_TOKEN: ${{ secrets.GAMENIGHT_API_TOKEN }}
     with:
       artifact: pocket-aces-windows
       game: pocket-aces
