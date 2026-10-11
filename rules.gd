@@ -22,20 +22,25 @@ var result = ""
 var payouts: Dictionary = {}
 var rng = RandomNumberGenerator.new()
 
-func setup(roster: Array, chips: int = 1000, big_blind: int = 20, seed_value: int = -1) -> void:
+func setup(roster: Array, chips: int = 1000, big_blind: int = 20, seed_value: int = -1, deal_now: bool = true) -> void:
 	players.clear()
 	starting_chips = chips
 	blind = big_blind
 	dealer = -1
 	hand = 0
 	revision = 0
+	turn = -1
+	board.clear()
+	deck.clear()
+	pending.clear()
+	result = ""
 	over = true
 	if seed_value < 0: rng.randomize()
 	else: rng.seed = seed_value
 	for p in roster.slice(0, 6):
 		players.append({"id":str(p.id), "name":str(p.get("name", "Guest")).left(32), "color":p.get("color", "#71d4ba"), "bot":p.get("bot", false), "chips":chips, "cards":[], "folded":false, "paid":0, "total":0, "action":""})
 	assert(players.size() >= 2)
-	new_hand()
+	if deal_now: new_hand()
 
 func new_hand() -> void:
 	if not over: return

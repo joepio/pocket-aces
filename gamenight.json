@@ -1,7 +1,7 @@
 {
   "id": "pocket-aces",
   "title": "Pocket Aces",
-  "tagline": "A rooftop poker table. Your phone holds the cards.",
+  "tagline": "A saloon poker table. Your phone holds the cards.",
   "developer": "GameNight",
   "players": {"min": 2, "max": 6, "best": 4},
   "match_minutes": 3,

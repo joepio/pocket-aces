@@ -9,7 +9,8 @@ var bot_time = 0.0
 var timeout_seconds = 45
 var chips = 1000
 var blind = 20
-var dynamic: Node3D
+var table_visuals: Node3D
+var hud_layer: CanvasLayer
 var banner: Label
 var status_label: Label
 var result_label: Label
@@ -17,6 +18,12 @@ var caption: Label
 var revision_seen = -1
 var camera: Camera3D
 var connected_phones: Dictionary = {}
+var ready_phones: Dictionary = {}
+var waiting_for_phones := false
+var setup_ui: Control
+var links_request := HTTPRequest.new()
+var links_base := ""
+var links_elapsed := 5.0
 var shot_at = 0.0
 var test_mode = OS.get_environment("POCKET_ACES_DEMO") == "1"
 var last_board_count = 0
@@ -27,14 +34,12 @@ const COLORS = ["#62d6b2", "#ffad77", "#be9bef", "#f38eaa", "#77bcef", "#efd474"
 func _ready() -> void:
 	GameNight.game_id = "pocket-aces"
 	GameNight.prepared.connect(prepare)
-	GameNight.started.connect(func(_id): live = true; publish())
-	GameNight.resumed.connect(func(_id): live = true; publish())
+	GameNight.started.connect(func(_id): live = true; begin_if_ready(); publish())
+	GameNight.resumed.connect(func(_id): live = true; begin_if_ready(); publish())
 	GameNight.paused.connect(func(_id): live = false; publish())
 	GameNight.disposed.connect(func(_id): live = false; has_table = false)
 	GameNight.companion_message.connect(phone_message)
-	GameNight.companion_presence.connect(func(id, online):
-		connected_phones[id] = maxi(0, connected_phones.get(id, 0) + (1 if online else -1))
-		if online: send_private(id))
+	GameNight.companion_presence.connect(phone_presence)
 	GameNight.roster_changed.connect(roster_change)
 	GameNight.setting_changed.connect(setting_change)
 	GameNight.declare_settings([
@@ -54,6 +59,17 @@ func _ready() -> void:
 	GameNight.declare_companion(phone_root, "index.html")
 	build_room()
 	build_hud()
+	setup_ui = preload("res://setup_ui.gd").new()
+	var setup_layer := CanvasLayer.new()
+	setup_layer.layer = 5
+	add_child(setup_layer)
+	setup_layer.add_child(setup_ui)
+	add_child(links_request)
+	links_request.timeout = 3
+	links_request.request_completed.connect(room_links_received)
+	links_base = OS.get_environment("GAMENIGHT_LINKS_URL")
+	if links_base.is_empty(): links_base = "http://127.0.0.1:7913"
+	if not links_base.begins_with("http://127.0.0.1:"): links_base = ""
 	if not GameNight.launched_by_daemon:
 		var roster: Array = []
 		for i in 4: roster.append({"id":"demo-%d" % i,"name":["Clover","Peaches","Fig","Mochi"][i],"color":COLORS[i],"bot":true})
@@ -80,7 +96,9 @@ func prepare(session: String, seats: Array, profiles: Array) -> void:
 		roster.append(entry)
 	while roster.size() < 2:
 		roster.append({"id":"house-%d" % roster.size(),"name":"Clover (bot)","bot":true,"color":COLORS[roster.size()]})
-	game.setup(roster, chips, blind)
+	game.setup(roster, chips, blind, -1, false)
+	waiting_for_phones = true
+	ready_phones.clear()
 	has_table = true
 	live = false
 	turn_time = 0
@@ -93,7 +111,43 @@ func roster_change(seats: Array, _profiles: Array, _presence: Array) -> void:
 	var ids: Array = []
 	for seat in seats: ids.append(str(seat.get("occupant", {}).get("player_id", "")))
 	for p in game.players:
-		if not p.bot and not p.id in ids: connected_phones.erase(p.id)
+		if not p.bot and not p.id in ids:
+			connected_phones.erase(p.id)
+			ready_phones.erase(p.id)
+	publish()
+
+func phone_presence(id: String, online: bool) -> void:
+	connected_phones[id] = maxi(0, connected_phones.get(id, 0) + (1 if online else -1))
+	if connected_phones[id] == 0: ready_phones.erase(id)
+	begin_if_ready()
+	publish()
+
+func phone_seats() -> Array:
+	var seats: Array = []
+	for p in game.players:
+		seats.append({"id":p.id, "name":p.name, "color":p.color, "bot":p.bot, "connected":p.bot or connected_phones.get(p.id, 0) > 0, "ready":p.bot or ready_phones.get(p.id, false)})
+	return seats
+
+func human_count() -> int:
+	return game.players.filter(func(p): return not p.bot).size()
+
+func ready_count() -> int:
+	return phone_seats().filter(func(p): return not p.bot and p.connected and p.ready).size()
+
+func all_connected() -> bool:
+	return phone_seats().all(func(p): return p.connected)
+
+func begin_if_ready() -> void:
+	if not has_table or not waiting_for_phones or not live: return
+	if not all_connected() or ready_count() != human_count(): return
+	waiting_for_phones = false
+	game.new_hand()
+	changed()
+
+func room_links_received(result: int, code: int, _headers: PackedStringArray, body: PackedByteArray) -> void:
+	if result != HTTPRequest.RESULT_SUCCESS or code != 200: return
+	var data = JSON.parse_string(body.get_string_from_utf8())
+	if data is Dictionary: setup_ui.set_room(data.get("room", {}))
 
 func setting_change(key: String, value: Variant) -> void:
 	match key:
@@ -105,9 +159,13 @@ func send_private(id: String) -> void:
 	if not has_table: return
 	var view = game.private_view(id)
 	if view.is_empty(): return
+	view.you["id"] = id
 	view["paused"] = not live
+	view["setup"] = {"waiting": waiting_for_phones, "ready": ready_phones.get(id, false), "players": phone_seats(), "count": ready_count(), "total": human_count()}
+	view["connection_wait"] = not waiting_for_phones and not all_connected()
 	view["seconds"] = maxi(0, timeout_seconds - int(turn_time))
-	if not live: view.actions = {}
+	if not live or waiting_for_phones or not all_connected(): view.actions = {}
+	if waiting_for_phones: view["seconds"] = 0
 	GameNight.send_companion_message(view, id)
 
 func publish() -> void:
@@ -118,6 +176,17 @@ func phone_message(id: String, data: Variant) -> void:
 	if not has_table or not data is Dictionary: return
 	if data.get("action") == "sync":
 		send_private(id)
+		return
+	if data.get("action") == "ready":
+		if waiting_for_phones and connected_phones.get(id, 0) > 0:
+			for p in game.players:
+				if p.id == id and not p.bot:
+					ready_phones[id] = data.get("ready", false) == true
+					begin_if_ready()
+					publish()
+		return
+	if waiting_for_phones or not all_connected():
+		GameNight.send_companion_message({"type":"error","text":"Waiting for everyone's phone."}, id)
 		return
 	if not live:
 		GameNight.send_companion_message({"type":"error","text":"The table is paused."}, id)
@@ -144,7 +213,7 @@ func _process(_dt: float) -> void:
 	var dt = minf(1.0, float(now - last_tick_ms) / 1000.0) if last_tick_ms > 0 else 0.0
 	last_tick_ms = now
 	if not has_table: return
-	if live and not test_mode:
+	if live and not waiting_for_phones and all_connected() and not test_mode:
 		if game.over:
 			between_time += dt
 			if between_time >= 10:
@@ -165,9 +234,15 @@ func _process(_dt: float) -> void:
 				changed()
 	if game.over:
 		caption.text = "Next hand in %d  ·  Free chips if you bust" % maxi(0, 10 - int(between_time))
-	else:
+	elif game.turn >= 0:
 		caption.text = "%s's turn  ·  %ds" % [game.players[game.turn].name, maxi(0, timeout_seconds - int(turn_time))]
 	if not live: caption.text = "Paused in GameNight"
+	hud_layer.visible = not waiting_for_phones and all_connected()
+	setup_ui.update_setup(phone_seats(), waiting_for_phones, not all_connected(), live)
+	links_elapsed += dt
+	if GameNight.launched_by_daemon and links_elapsed >= 3 and not links_base.is_empty() and links_request.get_http_client_status() == HTTPClient.STATUS_DISCONNECTED:
+		links_elapsed = 0
+		links_request.request(links_base + "/api/player-links")
 	if OS.get_environment("POCKET_ACES_CAPTURE") != "" and shot_at < 2:
 		shot_at += dt
 		if shot_at >= 2:
@@ -186,118 +261,11 @@ func bot_act() -> void:
 	game.act(own.id, {"action":action,"amount":options.min,"revision":game.revision})
 	changed()
 
-func material(color: Color, metal: float = 0.0) -> StandardMaterial3D:
-	var m = StandardMaterial3D.new()
-	m.albedo_color = color
-	m.roughness = 0.7
-	m.metallic = metal
-	return m
-
-func box(parent: Node3D, pos: Vector3, size: Vector3, color: Color) -> MeshInstance3D:
-	var node = MeshInstance3D.new()
-	var mesh = BoxMesh.new()
-	mesh.size = size
-	node.mesh = mesh
-	node.material_override = material(color)
-	node.position = pos
-	parent.add_child(node)
-	return node
-
-func cylinder(parent: Node3D, pos: Vector3, radius: float, height: float, color: Color) -> MeshInstance3D:
-	var node = MeshInstance3D.new()
-	var mesh = CylinderMesh.new()
-	mesh.top_radius = radius
-	mesh.bottom_radius = radius
-	mesh.height = height
-	mesh.radial_segments = 64
-	node.mesh = mesh
-	node.material_override = material(color)
-	node.position = pos
-	parent.add_child(node)
-	return node
-
-func sphere(parent: Node3D, pos: Vector3, radius: float, color: Color) -> MeshInstance3D:
-	var node = MeshInstance3D.new()
-	var mesh = SphereMesh.new()
-	mesh.radius = radius
-	mesh.height = radius * 2
-	node.mesh = mesh
-	node.material_override = material(color)
-	node.position = pos
-	parent.add_child(node)
-	return node
-
-func text3(parent: Node3D, pos: Vector3, text: String, size: int, color: Color, flat: bool = false) -> Label3D:
-	var label = Label3D.new()
-	label.text = text
-	label.font_size = size
-	label.pixel_size = 0.007
-	label.modulate = color
-	label.outline_size = 0 if flat else 3
-	if not flat: label.pixel_size = 0.010
-	label.position = pos
-	if flat: label.rotation_degrees.x = -90
-	else: label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
-	parent.add_child(label)
-	return label
-
 func build_room() -> void:
-	var env = WorldEnvironment.new()
-	env.environment = Environment.new()
-	env.environment.background_mode = Environment.BG_COLOR
-	env.environment.background_color = Color("101a31")
-	env.environment.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
-	env.environment.ambient_light_color = Color("c2c5ef")
-	env.environment.ambient_light_energy = 0.5
-	add_child(env)
-	var sun = DirectionalLight3D.new()
-	sun.rotation_degrees = Vector3(-55,-30,0)
-	sun.light_color = Color("ffe4bb")
-	sun.light_energy = 0.95
-	sun.shadow_enabled = true
-	add_child(sun)
-	camera = Camera3D.new()
-	camera.position = Vector3(0, 12.5, 13.5)
-	camera.fov = 44
-	add_child(camera)
-	camera.look_at(Vector3(0, 0.7, 0))
-	box(self,Vector3(0,-0.3,0),Vector3(30,0.4,24),Color("273342"))
-	for i in 19: box(self,Vector3(i * 1.1 - 10, -0.085, 0),Vector3(0.025,0.025,22),Color("344453"))
-	var rug = cylinder(self,Vector3(0,-0.05,0),7,0.04,Color("563d63"))
-	rug.scale.z = 0.68
-	var rim = cylinder(self,Vector3(0,0.9,0),5.55,0.42,Color("6b3c39"))
-	rim.scale.z = 0.62
-	var trim = cylinder(self,Vector3(0,1.13,0),5.28,0.07,Color("deb97f"))
-	trim.scale.z = 0.61
-	var felt = cylinder(self,Vector3(0,1.19,0),5.13,0.06,Color("176d65"))
-	felt.scale.z = 0.60
-	for x in [-3.5,3.5]: cylinder(self,Vector3(x,0.35,0),0.35,1,Color("392b39"))
-	# Rooftop skyline, rail and warm lamps give the table a real setting.
-	box(self,Vector3(0,0.3,-6.5),Vector3(23,0.25,0.18),Color("ddad6b"))
-	for x in range(-11,12,2): box(self,Vector3(x,0,-6.5),Vector3(0.1,2,0.1),Color("a38268"))
-	var random = RandomNumberGenerator.new()
-	random.seed = 92
-	for i in 18:
-		var x = i * 1.6 - 14
-		var h = random.randf_range(2,7)
-		box(self,Vector3(x,h/2 - 2,-12 - (i%3)),Vector3(1.2,h,1.4),Color("1a2641") if i%2 else Color("253252"))
-		for y in range(int(h)):
-			if i%3 != 0: box(self,Vector3(x,y - 1.4,-11.25 - i%3),Vector3(0.3,0.2,0.03),Color("d2af78"))
-	for x in [-7.5,7.5]:
-		cylinder(self,Vector3(x,1.8,-3),0.06,4,Color("bf9a69"))
-		sphere(self,Vector3(x,3.9,-3),0.32,Color("ffe2a0"))
-		var lamp = OmniLight3D.new()
-		lamp.position = Vector3(x,3.8,-3)
-		lamp.light_color = Color("ffc58b")
-		lamp.light_energy = 2
-		lamp.omni_range = 9
-		add_child(lamp)
-		cylinder(self,Vector3(x,0.4,3),0.55,0.9,Color("bc7b61"))
-		for j in 5:
-			var leaf = sphere(self,Vector3(x+sin(j*2)*0.3,1+j*0.14,3+cos(j*2)*0.3),0.45,Color("497b69"))
-			leaf.scale = Vector3(0.5,1.8,0.5)
-	dynamic = Node3D.new()
-	add_child(dynamic)
+	table_visuals = preload("res://table_visuals.gd").new()
+	add_child(table_visuals)
+	table_visuals.build()
+	camera = table_visuals.camera
 
 func ui_label(parent: Node, text: String, pos: Vector2, size: Vector2, font: int, color: Color) -> Label:
 	var label = Label.new()
@@ -313,9 +281,10 @@ func ui_label(parent: Node, text: String, pos: Vector2, size: Vector2, font: int
 
 func build_hud() -> void:
 	var hud = CanvasLayer.new()
+	hud_layer = hud
 	add_child(hud)
 	ui_label(hud,"POCKET ACES",Vector2(50,35),Vector2(450,50),36,Color("ffe1ae"))
-	ui_label(hud,"THE ROOFTOP CLUB",Vector2(52,84),Vector2(400,35),17,Color("bcbdd3"))
+	ui_label(hud,"THE SALOON",Vector2(52,84),Vector2(400,35),17,Color("bcbdd3"))
 	banner = ui_label(hud,"Waiting for GameNight",Vector2(500,35),Vector2(600,60),34,Color("fff3dc"))
 	banner.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	status_label = ui_label(hud,"",Vector2(500,99),Vector2(600,45),27,Color("83e1c3"))
@@ -326,59 +295,14 @@ func build_hud() -> void:
 	caption.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	ui_label(hud,"Fictional chips",Vector2(1370,48),Vector2(190,30),18,Color("bcbdd3"))
 
-func card(parent: Node3D, pos: Vector3, value: int = -1, deal: bool = false) -> void:
-	var root = Node3D.new()
-	root.position = pos
-	parent.add_child(root)
-	box(root,Vector3.ZERO,Vector3(0.83,0.045,1.18),Color("fff1da") if value >= 0 else Color("244a61"))
-	if value >= 0:
-		var red = int(value / 13) in [1,2]
-		text3(root,Vector3(0,0.036,0),Rules.card_text(value),57,Color("b73753") if red else Color("213746"),true)
-	else: text3(root,Vector3(0,0.036,0),"◆",62,Color("bda179"),true)
-	if deal:
-		root.position = Vector3(4,1.8,-1)
-		root.rotation.y = 0.4
-		var tween = root.create_tween().set_parallel(true).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
-		tween.tween_property(root,"position",pos,0.35)
-		tween.tween_property(root,"rotation:y",0.0,0.35)
-
 func refresh() -> void:
-	for child in dynamic.get_children():
-		dynamic.remove_child(child)
-		child.queue_free()
+	hud_layer.visible = not waiting_for_phones
 	var state = game.public_view()
 	banner.text = "Hand %d  /  %s" % [state.hand, state.street]
 	status_label.text = "POT  %d" % state.pot
 	result_label.text = state.result
 	var new_deal = last_hand != state.hand
 	if new_deal: last_board_count = 0
-	for i in 5: card(dynamic,Vector3((i-2)*0.99,1.26,-0.25),state.board[i] if i < state.board.size() else -1,i >= last_board_count and i < state.board.size())
-	for i in mini(12, int(state.pot/10)):
-		cylinder(dynamic,Vector3(-0.7+(i%3)*0.28,1.3+int(i/3)*0.09,1.35),0.16,0.085,Color("e4b96b") if i%2 else Color("fff0cf"))
-	var positions = [Vector3(-4,0,2.35),Vector3(0,0,3.65),Vector3(4,0,2.35),Vector3(4,0,-2.5),Vector3(0,0,-3.8),Vector3(-4,0,-2.5)]
-	var order = [0,2,3,5] if state.players.size() == 4 else ([0,2] if state.players.size() == 2 else range(state.players.size()))
-	for i in state.players.size():
-		var p = state.players[i]
-		var pos = positions[order[i]]
-		var color = Color.from_string(p.color,Color("71d4ba"))
-		if p.folded: color = color.darkened(0.48)
-		cylinder(dynamic,pos+Vector3(0,0.5,0),0.57,0.2,Color("8f6669"))
-		box(dynamic,pos+Vector3(0,0.45,0),Vector3(0.18,0.9,0.18),Color("34293a"))
-		sphere(dynamic,pos+Vector3(0,1.0,0),0.43,color)
-		sphere(dynamic,pos+Vector3(0,1.65,0),0.44,Color("e1ae80"))
-		cylinder(dynamic,pos+Vector3(0,1.98,0),0.49,0.12,color)
-		cylinder(dynamic,pos+Vector3(0,2.1,0),0.3,0.25,color)
-		for x in [-0.14,0.14]: sphere(dynamic,pos+Vector3(x,1.72,0.39),0.052,Color("253646"))
-		if p.turn:
-			var marker = cylinder(dynamic,pos+Vector3(0,0.08,0),0.78,0.045,Color("f4d781"))
-			marker.material_override = material(Color("f4d781"))
-		text3(dynamic,pos+Vector3(0,2.9,0),p.name + (" · D" if p.dealer else ""),38,Color("ffe29e") if p.turn else Color("fff1de"))
-		text3(dynamic,pos+Vector3(0,2.52,0),"%d chips  %s" % [p.chips,p.action],25,Color("c5eadc"))
-		var inner = pos * 0.67
-		for c in 2:
-			card(dynamic,Vector3(inner.x+(c-0.5)*0.45,1.27,inner.z),p.cards[c] if p.cards.size() == 2 else -1,new_deal)
-		for j in mini(8,int(p.chips/100)):
-			cylinder(dynamic,Vector3(inner.x+0.7,1.28+j*0.085,inner.z),0.17,0.08,color)
-		if p.paid > 0: text3(dynamic,Vector3(inner.x,1.4,inner.z-0.5),str(p.paid),28,Color("ffdf98"),true)
+	table_visuals.show_state(state, new_deal, last_board_count)
 	last_board_count = state.board.size()
 	last_hand = state.hand

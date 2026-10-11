@@ -19,7 +19,11 @@ const assert = require('node:assert/strict');
       const page = await context.newPage(); pages.push(page);
       page.on('pageerror',e=>errors.push(e.message));
       await page.goto(url);
-      await page.waitForFunction(()=>document.querySelector('#connection').textContent==='Private hand');
+      await page.waitForFunction(()=>['Private hand','Connected'].includes(document.querySelector('#connection').textContent));
+    }
+    // New tables wait until every phone has connected and explicitly readied.
+    for (const page of pages) if (await page.locator('#setup').isVisible()) await page.locator('#ready').tap();
+    for (const [i, page] of pages.entries()) {
       await page.waitForFunction(()=>!document.querySelector('#hand-toggle').disabled);
       assert.equal(await page.locator('#hand').textContent(),'◆◆','private cards start hidden');
       assert.equal(await page.locator('#hand-toggle').getAttribute('aria-label'),'Show cards');

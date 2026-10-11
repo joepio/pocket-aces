@@ -1,28 +1,29 @@
 /* Only this player's projected view arrives here. Never infer legal actions. */
 (() => {
   const $ = id => document.getElementById(id);
-  let state = null, pending = false, online = false, previousRevision = -1;
+  let state = null, pending = false, online = false, synced = false, previousRevision = -1;
   let revealed = false;
   const faces = ['2','3','4','5','6','7','8','9','10','J','Q','K','A'];
   const suits = ['♣','♦','♥','♠'];
-  function cards(target, values, backs = 0) {
+  const waiting = () => state?.setup?.waiting === true;
+  const playable = () => online && synced && !!state && !waiting();
+  function cards(target, values = [], backs = 0) {
     target.replaceChildren();
     for (let i = 0; i < Math.max(values.length, backs); i++) {
       const c = values[i], el = document.createElement('span');
-      const suit = Number.isInteger(c) ? Math.floor(c / 13) : -1;
+      const suit = Number.isInteger(c) && c >= 0 && c < 52 ? Math.floor(c / 13) : -1;
       el.className = `card ${suit < 0 ? 'back' : [1,2].includes(suit) ? 'red' : ''}`;
       el.textContent = suit < 0 ? '◆' : faces[c % 13] + suits[suit];
       target.append(el);
     }
   }
   function renderHand() {
-    const values = revealed ? state?.you?.cards || [] : [];
+    const values = revealed && playable() ? state?.you?.cards || [] : [];
     cards($('hand'), values, 2);
     $('hand-hint').textContent = revealed ? 'Tap to hide cards' : 'Tap to show cards';
     $('hand-toggle').setAttribute('aria-expanded', String(revealed));
     $('hand-toggle').setAttribute('aria-label', revealed
-      ? `Hide cards: ${values.map(c => faces[c % 13] + suits[Math.floor(c / 13)]).join(', ')}`
-      : 'Show cards');
+      ? `Hide cards: ${values.map(c => faces[c % 13] + suits[Math.floor(c / 13)]).join(', ')}` : 'Show cards');
   }
   function hideHand() { revealed = false; renderHand(); }
   function amount(value) {
@@ -32,53 +33,86 @@
     $('raise').textContent = `Raise to ${$('amount').value}`;
   }
   function availability() {
-    for (const b of document.querySelectorAll('#actions button')) b.disabled = pending || !online;
-    // Hiding is local and must remain possible while a bet is in flight.
-    $('hand-toggle').disabled = !state?.you?.cards?.length;
+    const live = playable(), stopped = state?.paused || state?.connection_wait;
+    for (const b of document.querySelectorAll('#actions button, #actions input')) b.disabled = pending || !live || stopped;
+    $('hand-toggle').disabled = !live || stopped || !state?.you?.cards?.length;
+    $('ready').disabled = pending || !online || !synced || !waiting();
+    $('gameplay').hidden = !live;
+    $('setup').hidden = !waiting() || !synced;
+    $('reconnecting').hidden = online && synced;
+    $('actions').hidden = !live || stopped || !Object.keys(state?.actions || {}).length;
+  }
+  function renderSetup(data) {
+    const setup = data.setup;
+    if (!setup?.waiting) return;
+    $('ready-count').textContent = `${setup.count} / ${setup.total} ready`;
+    $('players').replaceChildren();
+    for (const player of setup.players) {
+      const row = document.createElement('li'), avatar = document.createElement('span');
+      const name = document.createElement('span'), status = document.createElement('span');
+      const own = player.id === data.you.id;
+      row.className = player.bot || player.ready ? 'player is-ready' : 'player';
+      avatar.className = 'avatar';
+      avatar.textContent = player.name.slice(0, 1).toUpperCase();
+      // Server colors are optional; CSS rejects values that are not colors.
+      if (typeof player.color === 'string') avatar.style.backgroundColor = player.color;
+      name.className = 'player-name'; name.textContent = player.name + (own ? ' · You' : '');
+      status.className = 'player-status';
+      status.textContent = player.bot ? 'House bot' : !player.connected ? 'Connecting…' : player.ready ? '✓ Ready' : 'Not ready';
+      row.append(avatar, name, status); $('players').append(row);
+    }
+    $('ready').textContent = setup.ready ? '✓ Ready · tap to undo' : "I'm ready →";
+    $('ready').classList.toggle('is-ready', setup.ready);
+    $('ready-hint').textContent = setup.ready ? 'You’re ready. Waiting for the rest of the table.' : 'Your cards stay private on this phone.';
   }
   function receive(data) {
     if (data.type === 'error') { $('notice').textContent = data.text; pending = false; availability(); return; }
-    if (data.type !== 'state' || !data.you) return;
+    if (data.type !== 'state' || !data.you || !online) return;
     const changed = data.revision !== previousRevision;
-    if (data.hand !== state?.hand || JSON.stringify(data.you.cards) !== JSON.stringify(state?.you?.cards) || data.paused) revealed = false;
-    state = data;
-    if (changed) { pending = false; $('notice').textContent = ''; }
+    if (data.hand !== state?.hand || JSON.stringify(data.you.cards) !== JSON.stringify(state?.you?.cards) || data.paused || data.connection_wait || data.setup?.waiting) revealed = false;
+    state = data; synced = true;
+    if (changed || waiting()) { pending = false; $('notice').textContent = ''; }
     previousRevision = data.revision;
     $('name').textContent = data.you.name;
     $('chips').textContent = `${data.you.chips.toLocaleString()} chips`;
+    $('connection').textContent = waiting() ? 'Connected' : 'Private hand';
+    renderSetup(data);
     renderHand();
-    cards($('board'), data.board, 5);
+    cards($('board'), waiting() ? [] : data.board, waiting() ? 0 : 5);
     $('street').textContent = `Hand ${data.hand} · ${data.street}`;
     $('pot').textContent = `POT ${data.pot.toLocaleString()}`;
     const ownTurn = Object.keys(data.actions).length > 0;
-    $('turn').textContent = data.paused ? 'Table paused' : data.over ? 'Hand complete' : ownTurn ? `Your move · ${data.seconds}s` : `${data.turn}'s turn`;
-    $('result').textContent = data.over ? `${data.result}. Next hand shortly.` : data.you.folded ? 'Folded. You’re in again next hand.' : '';
-    $('actions').hidden = !ownTurn || data.paused;
+    $('turn').textContent = data.connection_wait ? 'Waiting for a phone…' : data.paused ? 'Table paused' : data.over ? 'Hand complete' : ownTurn ? `Your move · ${data.seconds}s` : `${data.turn}'s turn`;
+    $('result').textContent = data.connection_wait ? 'The hand resumes when everyone reconnects.' : data.over ? `${data.result}. Next hand shortly.` : data.you.folded ? 'Folded. You’re in again next hand.' : '';
     $('match').textContent = data.actions.check ? 'Check' : `Call ${data.actions.call || 0}`;
     $('raising').hidden = !data.actions.raise;
     if (data.actions.raise) {
-      $('amount').min = data.actions.min;
-      $('amount').max = data.actions.max;
+      $('amount').min = data.actions.min; $('amount').max = data.actions.max;
       amount(changed ? data.actions.min : Number($('amount').value));
     }
     availability();
   }
   const game = GameNight.connect(receive, status => {
-    online = status === 'connected';
-    pending = false;
+    online = status === 'connected'; synced = false; pending = false;
     hideHand();
-    $('connection').textContent = online ? 'Private hand' : 'Reconnecting…';
+    $('connection').textContent = online ? 'Connecting…' : 'Reconnecting…';
+    $('reconnecting').querySelector('h2').textContent = online ? 'Taking your seat' : 'Reconnecting to the table';
+    $('reconnecting').querySelector('p').textContent = online ? 'Your private seat will appear here.' : 'Your cards are hidden. Keep this page open.';
     availability();
-    if (online) game.send({action:'sync'});
+    if (online) queueMicrotask(() => game.send({action:'sync'}));
   });
-  $('hand-toggle').onclick = () => { revealed = !revealed; renderHand(); };
+  $('ready').onclick = () => {
+    if (!online || !synced || pending || !waiting()) return;
+    pending = true; availability();
+    game.send({action:'ready', ready:!state.setup.ready});
+  };
+  $('hand-toggle').onclick = () => { if ($('hand-toggle').disabled) return; revealed = !revealed; renderHand(); };
   document.addEventListener('visibilitychange', () => { if (document.hidden) hideHand(); });
   window.addEventListener('blur', hideHand);
   window.addEventListener('pagehide', hideHand);
   function act(action, amountValue) {
-    if (!online || pending || !state) return;
-    pending = true;
-    availability();
+    if (!playable() || pending || state.paused || state.connection_wait || !Object.keys(state.actions).length) return;
+    pending = true; availability();
     game.send({action, amount:amountValue, revision:state.revision});
   }
   $('fold').onclick = () => act('fold');

@@ -1,19 +1,26 @@
 <!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="theme-color" content="#102b30"><title>Pocket Aces · Your hand</title><link rel="stylesheet" href="phone.css"></head>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="theme-color" content="#153a32"><title>Pocket Aces · Your seat</title><link rel="stylesheet" href="phone.css"></head>
 <body><main>
-<header><span class="brand">POCKET ACES <small>THE ROOFTOP CLUB</small></span><span id="connection" role="status">Connecting</span></header>
-<section class="identity"><h1 id="name">Your seat</h1><span id="chips">Waiting for the table</span></section>
+<header><span class="brand"><span class="brand-mark" aria-hidden="true">♠</span><span>POCKET ACES<small>THE VELVET SALOON</small></span></span><span id="connection" role="status">Connecting</span></header>
+<section class="identity"><div><span class="eyebrow">YOUR SEAT</span><h1 id="name">Taking your seat…</h1></div><span id="chips">—</span></section>
 <div id="notice" role="status" aria-live="polite"></div>
+<section id="reconnecting" class="connection-panel" role="status"><span class="ornament" aria-hidden="true">♠</span><h2>Joining the table</h2><p>Your private seat will appear here.</p></section>
+<section id="setup" hidden aria-labelledby="setup-title">
+<div class="setup-intro"><span class="eyebrow">A PLACE AT THE TABLE</span><h2 id="setup-title">Ready when you are.</h2><p id="setup-hint">Everyone connects and taps ready before the first deal.</p></div>
+<div class="readiness-heading"><span>YOUR TABLE</span><strong id="ready-count">0 ready</strong></div><ul id="players" aria-label="Players and readiness"></ul>
+<button id="ready" class="primary ready-button" type="button" disabled>I'm ready <span aria-hidden="true">→</span></button>
+<p id="ready-hint" class="ready-hint" role="status" aria-live="polite">Keep this phone with you. Your cards stay private.</p>
+</section>
+<div id="gameplay" hidden>
 <button id="hand-toggle" type="button" aria-label="Show cards" aria-expanded="false" aria-controls="hand" disabled>
-<span id="hand" aria-hidden="true"><span class="card back">◆</span><span class="card back">◆</span></span>
-<span id="hand-hint" class="private">Tap to show cards</span>
+<span id="hand" aria-hidden="true"><span class="card back">◆</span><span class="card back">◆</span></span><span id="hand-hint" class="private">Tap to show cards</span>
 </button>
-<section class="table-info"><span id="street">Take a seat in GameNight</span><strong id="pot">POT 0</strong></section>
+<section class="table-info"><span id="street">Waiting for the deal</span><strong id="pot">POT 0</strong></section>
 <div id="board" aria-label="Community cards"></div>
 <h2 id="turn">Waiting for your hand…</h2><p id="result"></p>
 <section id="actions" hidden aria-label="Poker actions">
 <div class="buttons"><button id="fold" class="quiet">Fold</button><button id="match" class="primary">Check</button></div>
 <section id="raising" hidden><label for="amount">Raise to <output id="amount-label">0</output></label><input id="amount" type="range" step="1" min="0" max="1000"><div class="presets"><button id="minimum">Min</button><button id="half">½ pot</button><button id="pot-raise">Pot</button><button id="allin">All in</button></div><button id="raise" class="raise">Raise to 0</button></section>
-</section>
-<footer>Texas Hold’em · Fictional chips only</footer>
+</section></div>
+<footer><span aria-hidden="true">◆</span> Texas Hold’em · Fictional chips only <span aria-hidden="true">◆</span></footer>
 </main><script src="/assets/companion.js"></script><script src="phone.js"></script></body></html>

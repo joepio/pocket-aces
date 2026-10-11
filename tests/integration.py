@@ -63,7 +63,7 @@ async def main():
                     assert joined.get('player_id'), joined
                     ids.append(joined['player_id'])
                 game_path=str(ROOT)
-                extra={'GAMENIGHT':'1','GAMENIGHT_GAME_ID':'pocket-aces'}
+                extra={'GAMENIGHT':'1','GAMENIGHT_GAME_ID':'pocket-aces','GAMENIGHT_LINKS_URL':'http://127.0.0.1:18113'}
                 if args.windows_game:
                     game_path=subprocess.check_output(['wslpath','-w',str(ROOT)],text=True).strip()
                     extra['POCKET_ACES_COMPANION_ROOT']=str(ROOT/'phone')
@@ -89,6 +89,17 @@ async def main():
                     await sockets[i].send(json.dumps({'action':'sync'}))
                     return await message(sockets[i],lambda m:m.get('type')=='state')
                 views=[await state(0),await state(1)]
+                assert all(v['setup']['waiting'] and not v['you']['cards'] and not v['actions'] and v['pot']==0 for v in views)
+                await sockets[0].send(json.dumps({'action':'ready','ready':True}))
+                one_ready=await message(sockets[0],lambda m:m.get('type')=='state' and m['setup']['count']==1)
+                assert one_ready['setup']['waiting'] and one_ready['setup']['count']==1
+                await sockets[0].close()
+                disconnected=await message(sockets[1],lambda m:m.get('type')=='state' and m['setup']['count']==0)
+                assert disconnected['setup']['waiting'] and disconnected['seconds']==0
+                sockets[0]=await websockets.connect(f'ws://127.0.0.1:18113/api/companion/ws?profile={profiles[0]}&game=pocket-aces')
+                assert not (await state(0))['setup']['ready']
+                for socket in sockets: await socket.send(json.dumps({'action':'ready','ready':True}))
+                views=[await message(socket,lambda m:m.get('type')=='state' and not m['setup']['waiting']) for socket in sockets]
                 for i,v in enumerate(views):
                     assert len(v['you']['cards'])==2
                     assert all('cards' not in player for player in v['players'])
@@ -101,6 +112,15 @@ async def main():
                 assert 'not your turn' in error['text'],error
                 await sockets[turn].send(json.dumps({'action':'raise','amount':-10,'revision':views[turn]['revision']}))
                 assert (await message(sockets[turn],lambda m:m.get('type')=='error'))
+                # A missing phone pauses the hand instead of spending its turn clock.
+                await sockets[wrong].close()
+                held=await message(sockets[turn],lambda m:m.get('type')=='state' and m.get('connection_wait'))
+                assert not held['actions']
+                await asyncio.sleep(1.2)
+                held_again=await state(turn)
+                assert held_again['seconds']==held['seconds'] and held_again['revision']==held['revision']
+                sockets[wrong]=await websockets.connect(f'ws://127.0.0.1:18113/api/companion/ws?profile={profiles[wrong]}&game=pocket-aces')
+                await message(sockets[turn],lambda m:m.get('type')=='state' and not m.get('connection_wait'))
                 # Pause stops timers and rejects phone actions without changing the hand.
                 await overlay.send(json.dumps({'type':'pause'}))
                 paused=await message(sockets[turn],lambda m:m.get('type')=='state' and m.get('paused'))

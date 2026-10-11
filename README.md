@@ -1,14 +1,18 @@
 # Pocket Aces
 
-Texas Hold'em on a moonlit rooftop. The shared screen shows a 3D table;
+Texas Hold'em in a warm 3D saloon. The shared screen shows a 3D table;
 each player uses a phone or tablet for their private cards and betting.
 Two to six seats, no real money, no purchases.
 
 ## Play
 
-Join a GameNight room, take a seat, then select Pocket Aces. Open GameNight's
+Join a GameNight room, link your profile to your seat in the lobby, then select Pocket Aces. Open GameNight's
 Game tab on your phone. The host opens the bundled companion page for your
-linked profile. You don't enter a player number or open a separate game server.
+linked profile. The TV shows the room QR and each seat's connection/readiness.
+Every human taps **Ready** on their phone before the first hand is dealt. House
+bots are ready automatically. Disconnecting before the deal resets that seat's
+Ready status; reconnecting during a hand pauses/resumes the same hand and clock.
+You don't enter a player number or open a separate game server.
 
 - Each hand starts with two private cards and small/big blinds of 10/20.
 - Your phone keeps those cards face down. Tap the cards to look, then tap again
@@ -23,7 +27,8 @@ linked profile. You don't enter a player number or open a separate game server.
   winners' cards stay hidden. Phones only receive their owner's hole cards.
 - A new hand starts after ten seconds. The dealer rotates. Busted players get
   1,000 free chips, so everybody can keep playing.
-- After 45 seconds without an action, the player checks if possible, otherwise
+- A disconnected phone pauses betting and the turn clock until it reconnects.
+- After 45 seconds without an action from a connected player, the player checks if possible, otherwise
   folds. No bot spends an absent human's chips. AI seats have modest house bots.
 
 Blinds (next hand), starting chips (next session) and turn time are exposed
@@ -38,6 +43,7 @@ Godot 4.5 or newer, GL Compatibility. From this directory:
 ```sh
 godot --path .                     # four bots, no host needed
 godot --headless --path . --script res://tests/rules.gd
+godot --headless --path . --script res://tests/readiness.gd
 ```
 
 For a real room, register a **local shelf** entry with the current host. This is
@@ -63,7 +69,7 @@ Use absolute Windows paths for a Windows host. Set `GAMENIGHT_LIBRARY` to that
 JSON file and enable the host's companion relay (`GAMENIGHT_WEB=1` on the tested
 host revision). The launch handshake, seats and phone identity come from the
 host. A lone local player gets one house bot. Roster changes take effect on a
-fresh game session; a departure during a hand uses the safe timeout above.
+fresh game session; a departure during a hand pauses the table. Return to the lobby to change seats.
 
 This game uses the companion API currently on public GameNight `main`, pinned
 in `sdk-source.json`. It does not depend on the older local checkout's unmerged
@@ -76,6 +82,11 @@ before these phone screens can work through it.
 `companion_message`, `send_companion_message`, and the prepare/start/pause/
 resume/dispose lifecycle. It extracts only `phone/` into a writable real folder
 for the host to serve, including from an exported PCK.
+
+`setup_ui.gd` shows public join information supplied by the host's local
+`/api/player-links` endpoint (`GAMENIGHT_LINKS_URL` overrides the loopback base).
+It never creates its own join token or embeds a private profile URL in the QR.
+`table_visuals.gd` draws the shared saloon from public game state only.
 
 `rules.gd` owns the deck, hands, turn and chips. It validates the sender supplied
 by GameNight, the state revision, whole-chip amounts and legal actions. Client
@@ -102,7 +113,8 @@ python tests/integration.py \
 ```
 
 The test uses ports 18112/18113, disposable profiles and temporary host storage.
-It checks two distinct private hands, unlinked-phone rejection, a spoofed sender,
+It checks the ready gate, reset on disconnect before dealing, a paused clock
+during a mid-hand disconnect, two distinct private hands, unlinked-phone rejection, a spoofed sender,
 an illegal raise, paused input/timers, a full showdown, chip conservation, the next
 hand and reconnect. The test cleans up its own processes.
 
@@ -140,4 +152,6 @@ Validated locally: 7,341 rule assertions / 400 complete hands; actual host and
 companion relay with headless Linux and native Windows Godot; two mobile-size
 browser clients over the LAN bridge; Windows release export and startup.
 Physical phone browsers, macOS export and a deployed store release are not yet
-validated. The CI workflow is added but has not run remotely on this branch.
+validated. The ready gate and reconnection checks also run in CI. Local validation covers
+Linux and native Windows Godot 4.5.2 with the real host, plus two mobile browser
+clients and setup layouts at 320, 390 and 540 pixels.
