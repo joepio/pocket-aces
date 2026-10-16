@@ -22,6 +22,8 @@ var ready_phones: Dictionary = {}
 var waiting_for_phones := false
 var setup_ui: Control
 var links_request := HTTPRequest.new()
+var pickup_request := HTTPRequest.new()
+var pickup = preload("res://phone_pickup.gd").new()
 var links_base := ""
 var links_elapsed := 5.0
 var shot_at = 0.0
@@ -67,6 +69,9 @@ func _ready() -> void:
 	add_child(links_request)
 	links_request.timeout = 3
 	links_request.request_completed.connect(room_links_received)
+	add_child(pickup_request)
+	pickup_request.timeout = 8
+	pickup_request.request_completed.connect(pickup_received)
 	links_base = OS.get_environment("GAMENIGHT_LINKS_URL")
 	if links_base.is_empty(): links_base = "http://127.0.0.1:7913"
 	if not links_base.begins_with("http://127.0.0.1:"): links_base = ""
@@ -106,7 +111,7 @@ func prepare(session: String, seats: Array, profiles: Array) -> void:
 	refresh()
 	GameNight.notify_ready(session)
 
-func roster_change(seats: Array, _profiles: Array, _presence: Array) -> void:
+func roster_change(seats: Array, profiles: Array, _presence: Array) -> void:
 	# Keep chip ownership stable for this session. Departed players time out safely.
 	var ids: Array = []
 	for seat in seats: ids.append(str(seat.get("occupant", {}).get("player_id", "")))
@@ -114,6 +119,12 @@ func roster_change(seats: Array, _profiles: Array, _presence: Array) -> void:
 		if not p.bot and not p.id in ids:
 			connected_phones.erase(p.id)
 			ready_phones.erase(p.id)
+		# Picking up changes the profile, not the seat or ownership of its chips.
+		for profile in profiles:
+			if str(profile.get("id", "")) == p.id:
+				p.name = profile.get("name", p.name)
+				p.color = profile.get("color", p.color)
+	refresh()
 	publish()
 
 func phone_presence(id: String, online: bool) -> void:
@@ -147,7 +158,30 @@ func begin_if_ready() -> void:
 func room_links_received(result: int, code: int, _headers: PackedStringArray, body: PackedByteArray) -> void:
 	if result != HTTPRequest.RESULT_SUCCESS or code != 200: return
 	var data = JSON.parse_string(body.get_string_from_utf8())
-	if data is Dictionary: setup_ui.set_room(data.get("room", {}))
+	if data is Dictionary:
+		setup_ui.set_room(data.get("room", {}))
+		pickup.update_links(data)
+
+func pickup_received(result: int, code: int, _headers: PackedStringArray, _body: PackedByteArray) -> void:
+	if result != HTTPRequest.RESULT_SUCCESS or code not in [200, 202, 204]: pickup.fail()
+	links_elapsed = 5
+
+func update_pickup() -> void:
+	pickup.poll_timeout()
+	if not live or not setup_ui.visible:
+		pickup.reset_inputs()
+		return
+	for seat in GameNight.party.get("seats", []):
+		var occupant: Dictionary = seat.get("occupant", {})
+		var id := str(occupant.get("player_id", ""))
+		if id.is_empty() or str(seat.get("controller", "")).is_empty(): continue
+		var eligible: bool = phone_seats().any(func(p): return p.id == id and not p.bot and not p.connected)
+		var ticket: String = pickup.input_for_player(id, GameNight.frame_for_seat(int(seat.index)), eligible)
+		if ticket.is_empty() or links_base.is_empty(): continue
+		pickup.start(ticket, id)
+		var error := pickup_request.request(links_base + "/api/room-pickup/" + ticket.uri_encode() + "/" + id.uri_encode(), ["X-GameNight-Local-Pickup: 1"], HTTPClient.METHOD_POST)
+		if error != OK: pickup.fail()
+	setup_ui.set_pickup(pickup)
 
 func setting_change(key: String, value: Variant) -> void:
 	match key:
@@ -239,6 +273,7 @@ func _process(_dt: float) -> void:
 	if not live: caption.text = "Paused in GameNight"
 	hud_layer.visible = not waiting_for_phones and all_connected()
 	setup_ui.update_setup(phone_seats(), waiting_for_phones, not all_connected(), live)
+	update_pickup()
 	links_elapsed += dt
 	if GameNight.launched_by_daemon and links_elapsed >= 3 and not links_base.is_empty() and links_request.get_http_client_status() == HTTPClient.STATUS_DISCONNECTED:
 		links_elapsed = 0

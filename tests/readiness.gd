@@ -13,6 +13,8 @@ func run() -> void:
 	var profiles := [{"id":"one","name":"Clover"},{"id":"two","name":"Peaches"}]
 	main.prepare("ready-test",seats,profiles)
 	main.live = true
+	main.roster_change(seats, [{"id":"one","name":"Picked Clover","color":"#abcdef"}], [])
+	check(main.game.players[0].name == "Picked Clover" and main.game.players[0].color == "#abcdef", "Pickup refreshes the public profile without replacing the seat")
 	check(main.game.hand == 0 and main.game.pot() == 0, "No deal or blinds before phones ready")
 	check(main.game.players.all(func(p): return p.cards.is_empty()), "No private cards exist before ready")
 	main.phone_message("one", {"action":"ready","ready":true})

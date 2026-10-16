@@ -102,6 +102,16 @@ not add authentication or replace the host's identity boundary.
 
 ## Validate with the actual host
 
+The TV setup screen can link a scanned phone without returning to the lobby.
+Scan the room QR, then use left/right and A on your own controller to pick your
+profile. The game uses GameNight's canonical seat/controller frames and the
+loopback pickup endpoint. Mouse clicks cannot choose a controller for you.
+After linking, open Pocket Aces on the phone and tap Ready. Linking a profile
+alone does not connect the companion: the phone must open the game's private
+companion screen. The host supplies that route; the TV never displays private
+phone URLs or cards. All human phones must be connected and ready before dealing.
+The same pickup selector is available during a phone reconnection pause.
+
 Build `gamenight-daemon` and `gamenight-local-web` from the revision in
 `sdk-source.json`. Install Python `websockets` (15.0.1 tested), then run:
 

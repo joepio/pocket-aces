@@ -46,6 +46,7 @@ jobs:
       - name: Phone readiness and mobile setup
         run: |
           Godot_v4.6.2-stable_linux.x86_64 --headless --path game --script res://tests/readiness.gd
+          Godot_v4.6.2-stable_linux.x86_64 --headless --path game --script res://tests/pickup.gd
           node game/tests/phone-setup.cjs "$RUNNER_TEMP/poker-screenshots"
       - name: Two-phone integration and browser tests
         run: |
