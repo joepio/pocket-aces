@@ -2,7 +2,6 @@ extends Control
 ## TV onboarding contains only public room information, never profile links/cards.
 var seats: Array = []
 var waiting := false
-var reconnecting := false
 var running := false
 var room: Dictionary = {}
 var qr: Texture2D
@@ -13,13 +12,13 @@ var font := ThemeDB.fallback_font
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 
-func update_setup(players: Array, initial: bool, missing: bool, live: bool) -> void:
-	var changed := seats != players or waiting != initial or reconnecting != missing or running != live
+## Only shown before the first deal. A phone leaving mid-session never covers the table.
+func update_setup(players: Array, initial: bool, live: bool) -> void:
+	var changed := seats != players or waiting != initial or running != live
 	seats = players
 	waiting = initial
-	reconnecting = missing
 	running = live
-	visible = initial or missing
+	visible = initial
 	if changed: queue_redraw()
 
 func set_room(data: Dictionary) -> void:
@@ -57,8 +56,8 @@ func _draw() -> void:
 	if not visible: return
 	draw_rect(Rect2(0, 0, 1600, 900), Color(0.015, 0.025, 0.021, 0.72))
 	panel(Rect2(175, 132, 1250, 638), Color("192c28"), 30)
-	text("Grab your phone" if waiting else "Waiting for a phone", Vector2(230, 212), 48)
-	text("Scan. Pick your name with your controller. Ready on your phone." if waiting else "The hand is paused. Reconnect to continue.", Vector2(232, 254), 24, Color("bdc9b8"))
+	text("Grab your phone", Vector2(230, 212), 48)
+	text("Scan. Pick your name with your controller. Ready on your phone.", Vector2(232, 254), 24, Color("bdc9b8"))
 	panel(Rect2(230, 290, 310, 310), Color.WHITE, 14)
 	if qr != null:
 		draw_texture_rect(qr, Rect2(248, 308, 274, 274), false)
@@ -70,7 +69,7 @@ func _draw() -> void:
 	text("Already joined? Open the Game tab.", Vector2(232, 687), 20, Color("bdc9b8"))
 	var humans := seats.filter(func(p): return not p.bot)
 	var count := humans.filter(func(p): return p.connected and p.ready).size()
-	text("%d / %d READY" % [count, humans.size()] if waiting else "YOUR TABLE", Vector2(625, 314), 23, Color("e6c78c"))
+	text("%d / %d READY" % [count, humans.size()], Vector2(625, 314), 23, Color("e6c78c"))
 	for i in seats.size():
 		var p: Dictionary = seats[i]
 		var y := 344.0 + i * 56
@@ -78,7 +77,6 @@ func _draw() -> void:
 		draw_circle(Vector2(637, y + 2), 9, Color.from_string(p.color, Color.WHITE))
 		text(str(p.name).left(18), Vector2(660, y + 10), 23)
 		var status := "House bot" if p.bot else ("Ready" if p.ready and p.connected else ("Tap Ready on phone" if p.connected else "Connect phone"))
-		if not waiting and not p.bot: status = "Connected" if p.connected else "Reconnecting…"
 		if pickup_rows.has(p.id):
 			var row: Dictionary = pickup_rows[p.id]
 			status = "Connecting…" if row.busy else "‹  %s  ›   A · Pick up" % row.name.left(18)

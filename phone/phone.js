@@ -2,7 +2,7 @@
 (() => {
   const $ = id => document.getElementById(id);
   let state = null, pending = false, online = false, synced = false, previousRevision = -1;
-  let revealed = false;
+  let revealed = false, wasTurn = false;
   const faces = ['2','3','4','5','6','7','8','9','10','J','Q','K','A'];
   const suits = ['♣','♦','♥','♠'];
   const waiting = () => state?.setup?.waiting === true;
@@ -33,7 +33,7 @@
     $('raise').textContent = `Raise to ${$('amount').value}`;
   }
   function availability() {
-    const live = playable(), stopped = state?.paused || state?.connection_wait;
+    const live = playable(), stopped = state?.paused;
     for (const b of document.querySelectorAll('#actions button, #actions input')) b.disabled = pending || !live || stopped;
     $('hand-toggle').disabled = !live || stopped || !state?.you?.cards?.length;
     $('ready').disabled = pending || !online || !synced || !waiting();
@@ -41,6 +41,13 @@
     $('setup').hidden = !waiting() || !synced;
     $('reconnecting').hidden = online && synced;
     $('actions').hidden = !live || stopped || !Object.keys(state?.actions || {}).length;
+    // Off turn the phone is calm and almost empty, so nobody keeps watching it.
+    // On turn it lights up. Setup and reconnecting keep the saloon style.
+    const myTurn = live && !stopped && Object.keys(state?.actions || {}).length > 0;
+    document.body.classList.toggle('my-turn', myTurn);
+    document.body.classList.toggle('idle', live && !myTurn);
+    if (myTurn && !wasTurn) navigator.vibrate?.([60, 40, 60]);
+    wasTurn = myTurn;
   }
   function renderSetup(data) {
     const setup = data.setup;
@@ -69,7 +76,7 @@
     if (data.type === 'error') { $('notice').textContent = data.text; pending = false; availability(); return; }
     if (data.type !== 'state' || !data.you || !online) return;
     const changed = data.revision !== previousRevision;
-    if (data.hand !== state?.hand || JSON.stringify(data.you.cards) !== JSON.stringify(state?.you?.cards) || data.paused || data.connection_wait || data.setup?.waiting) revealed = false;
+    if (data.hand !== state?.hand || JSON.stringify(data.you.cards) !== JSON.stringify(state?.you?.cards) || data.paused || data.setup?.waiting) revealed = false;
     state = data; synced = true;
     if (changed || waiting()) { pending = false; $('notice').textContent = ''; }
     previousRevision = data.revision;
@@ -82,8 +89,10 @@
     $('street').textContent = `Hand ${data.hand} · ${data.street}`;
     $('pot').textContent = `POT ${data.pot.toLocaleString()}`;
     const ownTurn = Object.keys(data.actions).length > 0;
-    $('turn').textContent = data.connection_wait ? 'Waiting for a phone…' : data.paused ? 'Table paused' : data.over ? 'Hand complete' : ownTurn ? `Your move · ${data.seconds}s` : `${data.turn}'s turn`;
-    $('result').textContent = data.connection_wait ? 'The hand resumes when everyone reconnects.' : data.over ? `${data.result}. Next hand shortly.` : data.you.folded ? 'Folded. You’re in again next hand.' : '';
+    $('turn').textContent = data.paused ? 'Table paused' : data.over ? 'Hand complete' : ownTurn ? 'Your move' : `${data.turn}'s turn`;
+    $('seconds').textContent = ownTurn && !data.paused ? `${data.seconds}s` : '';
+    $('result').textContent = data.over ? `${data.result}. Next hand shortly.` : '';
+    $('idle-chips').textContent = data.paused ? 'Table paused' : data.you.folded ? 'Folded' : `${data.you.chips.toLocaleString()} chips`;
     $('match').textContent = data.actions.check ? 'Check' : `Call ${data.actions.call || 0}`;
     $('raising').hidden = !data.actions.raise;
     if (data.actions.raise) {
@@ -111,7 +120,7 @@
   window.addEventListener('blur', hideHand);
   window.addEventListener('pagehide', hideHand);
   function act(action, amountValue) {
-    if (!playable() || pending || state.paused || state.connection_wait || !Object.keys(state.actions).length) return;
+    if (!playable() || pending || state.paused || !Object.keys(state.actions).length) return;
     pending = true; availability();
     game.send({action, amount:amountValue, revision:state.revision});
   }

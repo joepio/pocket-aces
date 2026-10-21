@@ -93,3 +93,37 @@ h1{font-size:25px}
 .card{width:110px;height:151px}
 footer{letter-spacing:0}
 }
+/* Off turn: calm and nearly empty. Just your cards, nothing worth watching. */
+body.idle{background:#0c100f}
+body.idle:before{border-color:#141a18;box-shadow:none}
+body.idle main{min-height:100dvh;display:flex;flex-direction:column;justify-content:center}
+body.idle header,body.idle .identity,body.idle .table-info,body.idle #board,body.idle #turn-line,body.idle #result,body.idle footer{display:none}
+body.idle #hand .card{filter:saturate(.35) brightness(.72);box-shadow:none}
+body.idle #hand .card.back{background:#1a211e;color:#3b4641;border:2px solid #29322e;outline:none}
+body.idle .private{color:#55605b;margin-bottom:6px}
+#idle-chips{display:none;text-align:center;font-size:12px;letter-spacing:.4px;color:#47524d;margin:0}
+body.idle #idle-chips{display:block}
+/* Your turn: loud, colourful, impossible to miss. */
+@keyframes turn-glow{0%{background-position:0% 40%}50%{background-position:100% 60%}100%{background-position:0% 40%}}
+@keyframes turn-in{0%{transform:scale(.9);opacity:0}60%{transform:scale(1.06)}100%{transform:scale(1);opacity:1}}
+body.my-turn{color:#fff;background:linear-gradient(135deg,#ff9a3c,#ff4f6d 35%,#c03bd8 68%,#5b4bff);background-size:260% 260%;animation:turn-glow 9s ease-in-out infinite}
+body.my-turn:before{border-color:#ffe36e;box-shadow:inset 0 0 0 2px #fff7,inset 0 0 60px #fff3}
+body.my-turn header{border-color:#fff5}
+body.my-turn .brand,body.my-turn .brand small,body.my-turn .eyebrow,body.my-turn #chips,body.my-turn #connection{color:#fff}
+body.my-turn #chips,body.my-turn #connection{background:#0003;border-color:#fff6}
+body.my-turn #turn-line{font-family:Georgia,serif;font-size:40px;font-weight:normal;margin:6px 0 4px;text-shadow:0 3px 14px #4009;animation:turn-in .45s ease-out}
+body.my-turn #seconds{font-family:ui-sans-serif,system-ui,sans-serif;font-size:15px;font-weight:800;vertical-align:middle;background:#fff;color:#c0306a;border-radius:20px;padding:4px 10px}
+body.my-turn .private{color:#fffd}
+body.my-turn .table-info{border-color:#fff5;color:#fff}
+body.my-turn #pot{color:#ffe36e;font-size:15px}
+body.my-turn #board .card.back{background:#fff2;border-color:#fff5;color:#fff6}
+body.my-turn #result{color:#fff}
+body.my-turn .quiet{background:#2a0f3acc;color:#fff;border:1px solid #fff4}
+body.my-turn .primary{background:#fff;color:#a8235a;box-shadow:0 4px 0 #0003}
+body.my-turn .raise{background:#ffe36e;color:#4a1f00}
+body.my-turn label{color:#fff}
+body.my-turn input[type=range]{accent-color:#ffe36e}
+body.my-turn .presets button{background:#fff3;color:#fff;border-color:#fff5}
+body.my-turn footer,body.my-turn footer span{color:#fffa}
+@media(prefers-reduced-motion:reduce){body.my-turn,body.my-turn #turn-line{animation:none}}
+body.my-turn #hand .card.back{background:repeating-linear-gradient(45deg,#ffffff14 0 6px,transparent 6px 12px),#3a1460;color:#ffe36e;border-color:#ffe36e;outline-color:#1e0833}

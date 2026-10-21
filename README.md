@@ -11,7 +11,8 @@ Game tab on your phone. The host opens the bundled companion page for your
 linked profile. The TV shows the room QR and each seat's connection/readiness.
 Every human taps **Ready** on their phone before the first hand is dealt. House
 bots are ready automatically. Disconnecting before the deal resets that seat's
-Ready status; reconnecting during a hand pauses/resumes the same hand and clock.
+Ready status. After the deal the table never waits for a phone: a player who
+briefly switches apps keeps their seat, cards and chips.
 You don't enter a player number or open a separate game server.
 
 - Each hand starts with two private cards and small/big blinds of 10/20.
@@ -27,7 +28,11 @@ You don't enter a player number or open a separate game server.
   winners' cards stay hidden. Phones only receive their owner's hole cards.
 - A new hand starts after ten seconds. The dealer rotates. Busted players get
   1,000 free chips, so everybody can keep playing.
-- A disconnected phone pauses betting and the turn clock until it reconnects.
+- A phone that is away doesn't pause anything. On that player's turn the clock
+  is 20 seconds (or the turn time, if shorter); then they check or fold. The TV
+  caption quietly says "phone away". Reconnecting restores the normal clock.
+- Off turn the phone is calm and nearly empty: just your cards. On your turn it
+  turns bright with the pot, board and actions, and vibrates where supported.
 - After 45 seconds without an action from a connected player, the player checks if possible, otherwise
   folds. No bot spends an absent human's chips. AI seats have modest house bots.
 
@@ -69,7 +74,7 @@ Use absolute Windows paths for a Windows host. Set `GAMENIGHT_LIBRARY` to that
 JSON file and enable the host's companion relay (`GAMENIGHT_WEB=1` on the tested
 host revision). The launch handshake, seats and phone identity come from the
 host. A lone local player gets one house bot. Roster changes take effect on a
-fresh game session; a departure during a hand pauses the table. Return to the lobby to change seats.
+fresh game session; a departure during a hand is timed out on its turns. Return to the lobby to change seats.
 
 This game uses the companion API currently on public GameNight `main`, pinned
 in `sdk-source.json`. It does not depend on the older local checkout's unmerged
@@ -110,7 +115,6 @@ After linking, open Pocket Aces on the phone and tap Ready. Linking a profile
 alone does not connect the companion: the phone must open the game's private
 companion screen. The host supplies that route; the TV never displays private
 phone URLs or cards. All human phones must be connected and ready before dealing.
-The same pickup selector is available during a phone reconnection pause.
 
 Build `gamenight-daemon` and `gamenight-local-web` from the revision in
 `sdk-source.json`. Install Python `websockets` (15.0.1 tested), then run:
@@ -123,7 +127,7 @@ python tests/integration.py \
 ```
 
 The test uses ports 18112/18113, disposable profiles and temporary host storage.
-It checks the ready gate, reset on disconnect before dealing, a paused clock
+It checks the ready gate, reset on disconnect before dealing, play continuing
 during a mid-hand disconnect, two distinct private hands, unlinked-phone rejection, a spoofed sender,
 an illegal raise, paused input/timers, a full showdown, chip conservation, the next
 hand and reconnect. The test cleans up its own processes.

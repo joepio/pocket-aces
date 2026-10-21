@@ -10,7 +10,7 @@ func run() -> void:
 	main.phone_message("one", {"action":"ready","ready":true})
 	var room_file := OS.get_environment("POCKET_ACES_ROOM_FIXTURE")
 	if not room_file.is_empty(): main.setup_ui.set_room(JSON.parse_string(FileAccess.get_file_as_string(room_file)))
-	main.setup_ui.update_setup(main.phone_seats(), true, true, true)
+	main.setup_ui.update_setup(main.phone_seats(), true, true)
 	main.pickup.update_links({"room":{"pending":[{"id":"sample-fig","profile":{"display_name":"Fig"}}]},"linked":["one"]})
 	main.setup_ui.set_pickup(main.pickup)
 	await create_timer(1).timeout

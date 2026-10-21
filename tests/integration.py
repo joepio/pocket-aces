@@ -112,15 +112,14 @@ async def main():
                 assert 'not your turn' in error['text'],error
                 await sockets[turn].send(json.dumps({'action':'raise','amount':-10,'revision':views[turn]['revision']}))
                 assert (await message(sockets[turn],lambda m:m.get('type')=='error'))
-                # A missing phone pauses the hand instead of spending its turn clock.
+                # A phone briefly leaving never pauses the hand: the player on turn keeps playing.
                 await sockets[wrong].close()
-                held=await message(sockets[turn],lambda m:m.get('type')=='state' and m.get('connection_wait'))
-                assert not held['actions']
                 await asyncio.sleep(1.2)
-                held_again=await state(turn)
-                assert held_again['seconds']==held['seconds'] and held_again['revision']==held['revision']
+                still=await state(turn)
+                assert still['actions'] and 'connection_wait' not in still and not still['paused']
                 sockets[wrong]=await websockets.connect(f'ws://127.0.0.1:18113/api/companion/ws?profile={profiles[wrong]}&game=pocket-aces')
-                await message(sockets[turn],lambda m:m.get('type')=='state' and not m.get('connection_wait'))
+                back=await state(wrong)
+                assert back['hand']==still['hand'] and back['you']['cards']==views[wrong]['you']['cards']
                 # Pause stops timers and rejects phone actions without changing the hand.
                 await overlay.send(json.dumps({'type':'pause'}))
                 paused=await message(sockets[turn],lambda m:m.get('type')=='state' and m.get('paused'))

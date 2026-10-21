@@ -37,15 +37,26 @@ func run() -> void:
 	main.begin_if_ready()
 	check(main.game.hand == 1,"Repeated ready evaluation does not redeal")
 	main.phone_presence("one",false)
-	var revision: int = main.game.revision
-	main.phone_message("two", {"action":"fold","revision":revision})
-	check(main.game.revision == revision,"Missing phone blocks bets")
-	var before: float = main.turn_time
-	main.last_tick_ms = Time.get_ticks_msec() - 1000
-	main._process(1.0)
-	check(main.turn_time == before,"Disconnected table freezes turn clock")
+	main._process(0.0)
+	check(not main.setup_ui.visible, "No waiting-for-phone overlay mid-hand")
+	var away_turn: bool = main.game.players[main.game.turn].id == "one"
+	if not away_turn:
+		var revision: int = main.game.revision
+		main.phone_message("two", {"action":"call" if main.game.legal(main.game.turn).call > 0 else "check","revision":revision})
+		check(main.game.revision > revision,"Connected phone keeps playing while another phone is away")
+	check(main.game.players[main.game.turn].id == "one" or main.game.over,"Turn reaches the away player")
+	if not main.game.over:
+		check(main.turn_limit() == main.AWAY_SECONDS,"Away player gets the short clock")
+		var hand: int = main.game.hand
+		var revision: int = main.game.revision
+		main.turn_time = main.AWAY_SECONDS - 1
+		main._process(0.0)
+		check(main.game.revision == revision,"Away player still has time before the short clock ends")
+		main.turn_time = main.AWAY_SECONDS
+		main._process(0.0)
+		check(main.game.revision > revision and main.game.hand == hand,"Away player checks or folds after the short clock, same hand")
 	main.phone_presence("one",true)
-	check(main.all_connected() and main.game.revision == revision,"Reconnect preserves current hand")
+	check(main.all_connected() and main.turn_limit() == main.timeout_seconds,"Reconnect restores the normal clock")
 	print("POCKET_ACES_READINESS_", "PASS" if failures == 0 else "FAIL")
 	main.free()
 	quit(failures)

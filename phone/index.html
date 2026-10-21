@@ -15,9 +15,10 @@
 <button id="hand-toggle" type="button" aria-label="Show cards" aria-expanded="false" aria-controls="hand" disabled>
 <span id="hand" aria-hidden="true"><span class="card back">◆</span><span class="card back">◆</span></span><span id="hand-hint" class="private">Tap to show cards</span>
 </button>
+<p id="idle-chips"></p>
 <section class="table-info"><span id="street">Waiting for the deal</span><strong id="pot">POT 0</strong></section>
 <div id="board" aria-label="Community cards"></div>
-<h2 id="turn">Waiting for your hand…</h2><p id="result"></p>
+<h2 id="turn-line"><span id="turn">Waiting for your hand…</span> <span id="seconds"></span></h2><p id="result"></p>
 <section id="actions" hidden aria-label="Poker actions">
 <div class="buttons"><button id="fold" class="quiet">Fold</button><button id="match" class="primary">Check</button></div>
 <section id="raising" hidden><label for="amount">Raise to <output id="amount-label">0</output></label><input id="amount" type="range" step="1" min="0" max="1000"><div class="presets"><button id="minimum">Min</button><button id="half">½ pot</button><button id="pot-raise">Pot</button><button id="allin">All in</button></div><button id="raise" class="raise">Raise to 0</button></section>

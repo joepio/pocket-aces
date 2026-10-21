@@ -7,6 +7,9 @@ var turn_time = 0.0
 var between_time = 0.0
 var bot_time = 0.0
 var timeout_seconds = 45
+# A phone that briefly leaves keeps its seat; the hand never waits for it.
+# On its own turn an away phone gets a shorter clock, then checks or folds.
+const AWAY_SECONDS = 20
 var chips = 1000
 var blind = 20
 var table_visuals: Node3D
@@ -148,6 +151,13 @@ func ready_count() -> int:
 func all_connected() -> bool:
 	return phone_seats().all(func(p): return p.connected)
 
+func is_away(id: String) -> bool:
+	return phone_seats().any(func(p): return p.id == id and not p.connected)
+
+func turn_limit() -> int:
+	if game.turn < 0 or game.over: return timeout_seconds
+	return mini(timeout_seconds, AWAY_SECONDS) if is_away(game.players[game.turn].id) else timeout_seconds
+
 func begin_if_ready() -> void:
 	if not has_table or not waiting_for_phones or not live: return
 	if not all_connected() or ready_count() != human_count(): return
@@ -196,9 +206,8 @@ func send_private(id: String) -> void:
 	view.you["id"] = id
 	view["paused"] = not live
 	view["setup"] = {"waiting": waiting_for_phones, "ready": ready_phones.get(id, false), "players": phone_seats(), "count": ready_count(), "total": human_count()}
-	view["connection_wait"] = not waiting_for_phones and not all_connected()
-	view["seconds"] = maxi(0, timeout_seconds - int(turn_time))
-	if not live or waiting_for_phones or not all_connected(): view.actions = {}
+	view["seconds"] = maxi(0, turn_limit() - int(turn_time))
+	if not live or waiting_for_phones: view.actions = {}
 	if waiting_for_phones: view["seconds"] = 0
 	GameNight.send_companion_message(view, id)
 
@@ -219,7 +228,7 @@ func phone_message(id: String, data: Variant) -> void:
 					begin_if_ready()
 					publish()
 		return
-	if waiting_for_phones or not all_connected():
+	if waiting_for_phones:
 		GameNight.send_companion_message({"type":"error","text":"Waiting for everyone's phone."}, id)
 		return
 	if not live:
@@ -247,7 +256,7 @@ func _process(_dt: float) -> void:
 	var dt = minf(1.0, float(now - last_tick_ms) / 1000.0) if last_tick_ms > 0 else 0.0
 	last_tick_ms = now
 	if not has_table: return
-	if live and not waiting_for_phones and all_connected() and not test_mode:
+	if live and not waiting_for_phones and not test_mode:
 		if game.over:
 			between_time += dt
 			if between_time >= 10:
@@ -262,17 +271,19 @@ func _process(_dt: float) -> void:
 			var p = game.players[game.turn]
 			if p.bot and bot_time >= 1.8:
 				bot_act()
-			elif turn_time >= timeout_seconds:
+			elif turn_time >= turn_limit():
 				var action = "check" if game.legal(game.turn).check else "fold"
 				game.act(p.id, {"action":action,"revision":game.revision})
 				changed()
 	if game.over:
 		caption.text = "Next hand in %d  ·  Free chips if you bust" % maxi(0, 10 - int(between_time))
 	elif game.turn >= 0:
-		caption.text = "%s's turn  ·  %ds" % [game.players[game.turn].name, maxi(0, timeout_seconds - int(turn_time))]
+		var current = game.players[game.turn]
+		caption.text = "%s's turn  ·  %ds" % [current.name, maxi(0, turn_limit() - int(turn_time))]
+		if is_away(current.id): caption.text += "  ·  phone away"
 	if not live: caption.text = "Paused in GameNight"
-	hud_layer.visible = not waiting_for_phones and all_connected()
-	setup_ui.update_setup(phone_seats(), waiting_for_phones, not all_connected(), live)
+	hud_layer.visible = not waiting_for_phones
+	setup_ui.update_setup(phone_seats(), waiting_for_phones, live)
 	update_pickup()
 	links_elapsed += dt
 	if GameNight.launched_by_daemon and links_elapsed >= 3 and not links_base.is_empty() and links_request.get_http_client_status() == HTTPClient.STATUS_DISCONNECTED:
